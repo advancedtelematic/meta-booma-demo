@@ -20,7 +20,11 @@
 #include <boost/program_options.hpp>
 
 #include <olp/authentication/TokenProvider.h>
+#include <olp/core/cache/CacheSettings.h>
+#include <olp/core/cache/KeyValueCache.h>
 #include <olp/core/client/HRN.h>
+#include <olp/core/client/OlpClientSettings.h>
+#include <olp/core/client/OlpClientSettingsFactory.h>
 
 #include <olp/dataservice/write/StreamLayerClient.h>
 #include <olp/dataservice/write/model/PublishDataRequest.h>
@@ -29,21 +33,20 @@ using namespace olp::dataservice::write;
 using namespace olp::dataservice::write::model;
 
 namespace {
-std::string gEndpoint;
+// std::string gEndpoint;
 std::string gAppid;
 std::string gSecret;
 std::string gCatalog;
 std::string gLayer;
 std::string gFile;
 
-int parseProgramOptions(int argc, const char* const* argv) {
+int parseProgramOptions(int argc, const char *const *argv) {
   namespace po = boost::program_options;
 
   po::options_description desc("Required Parameters");
 
   // clang-format off
         desc.add_options()
-        ("endpoint", po::value<std::string>(), "Auth endpoint")
         ("appid", po::value<std::string>(), "App id")
         ("secret", po::value<std::string>(), "App secret")
         ("catalog", po::value<std::string>(), "Catalog to write to")
@@ -57,17 +60,16 @@ int parseProgramOptions(int argc, const char* const* argv) {
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
-  } catch (std::exception& e) {
+  } catch (std::exception &e) {
     std::cout << e.what() << std::endl;
     return -1;
   }
-  if (!vm.count("endpoint") || !vm.count("appid") || !vm.count("secret") ||
+  if (!vm.count("appid") || !vm.count("secret") ||
       !vm.count("catalog") || !vm.count("layer") || !vm.count("file")) {
     std::cout << desc << std::endl;
     return -1;
   }
 
-  gEndpoint = vm["endpoint"].as<std::string>();
   gAppid = vm["appid"].as<std::string>();
   gSecret = vm["secret"].as<std::string>();
   gCatalog = vm["catalog"].as<std::string>();
@@ -78,20 +80,36 @@ int parseProgramOptions(int argc, const char* const* argv) {
 }
 
 std::shared_ptr<StreamLayerClient> createStreamLayerClient() {
-  olp::authentication::Settings settings;
-  settings.token_endpoint_url = gEndpoint;
+  // Create a task scheduler instance
+  std::shared_ptr<olp::thread::TaskScheduler> task_scheduler =
+      olp::client::OlpClientSettingsFactory::CreateDefaultTaskScheduler(1u);
 
-  olp::client::OlpClientSettings clientSettings;
-  clientSettings.authentication_settings = (olp::client::AuthenticationSettings{
-      olp::authentication::TokenProviderDefault{gAppid, gSecret, settings},
-      boost::none});
+  // Create a network client
+  std::shared_ptr<olp::http::Network> http_client = olp::client::
+      OlpClientSettingsFactory::CreateDefaultNetworkRequestHandler();
 
-  return std::make_shared<StreamLayerClient>(olp::client::HRN{gCatalog},
-                                             clientSettings);
+  olp::authentication::Settings settings({gAppid, gSecret});
+  settings.task_scheduler = task_scheduler;
+  settings.network_request_handler = http_client;
+
+  olp::client::AuthenticationSettings auth_settings;
+  auth_settings.provider =
+      olp::authentication::TokenProviderDefault(std::move(settings));
+
+  olp::client::OlpClientSettings client_settings;
+  client_settings.authentication_settings = auth_settings;
+  client_settings.task_scheduler = std::move(task_scheduler);
+  client_settings.network_request_handler = std::move(http_client);
+  client_settings.cache =
+      olp::client::OlpClientSettingsFactory::CreateDefaultCache({});
+
+
+  return std::make_shared<StreamLayerClient>(
+      olp::client::HRN{gCatalog}, StreamLayerClientSettings(), client_settings);
 }
-}  // namespace
+} // namespace
 
-int runExample(int argc, const char* const* argv) {
+int runExample(int argc, const char *const *argv) {
 
   std::cout << "-------------------\n";
   std::cout << "Welcome to Booma!!!\n";
