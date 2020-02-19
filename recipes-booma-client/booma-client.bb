@@ -12,4 +12,4 @@ do_install_append () {
     install -m 0755 booma-client.py ${D}${bindir}
 }
 
-DEPENDS_${PN} = "rplidar-roboticia geopy python3-numpy python3-pandas "
+RDEPENDS_${PN} = "rplidar-roboticia python3-numpy "
