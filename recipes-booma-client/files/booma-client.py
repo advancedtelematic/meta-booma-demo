@@ -52,7 +52,7 @@ def scan():
 	try:
 		print('Recording measurments... Press Crl+C to stop.')
 		for scan in lidar.iter_scans():
-			data.append(np.datetime64(datetime.datetime.now()))
+			data.append(np.datetime64(datetime.now()))
 			data.append(np.array(scan))
 			print(scan)
 	except KeyboardInterrupt:
